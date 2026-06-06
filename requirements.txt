@@ -7,3 +7,7 @@ dotenv
 langchain-openai
 langsmith
 python-multipart
+pypdf 
+sentence-transformers
+chromadb
+langchain-chroma
