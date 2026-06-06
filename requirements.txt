@@ -11,3 +11,4 @@ pypdf
 sentence-transformers
 chromadb
 langchain-chroma
+pydantic

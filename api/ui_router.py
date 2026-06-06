@@ -2,13 +2,19 @@ from  fastapi import APIRouter
 from fastapi import FastAPI, UploadFile, File
 import os
 from dotenv import load_dotenv
+from langchain import tools
 from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.memory import InMemorySaver
 import shutil
+from utils.sysPrompt import systemPrompt
+from langchain_openai import ChatOpenAI
+from uuid_utils import uuid4
 from utils.pdfExtractor import extract_text
-
-from utils.pdfExtractor import extract_text
+from models.InputHandler import UIInput
+from core.orchestrator import tools as orchestrator_tools
 
 load_dotenv()
+memory = InMemorySaver()
 
 app = FastAPI()
 
@@ -18,14 +24,43 @@ os.makedirs(pdf_directory, exist_ok=True)
 
 router = APIRouter()
 
+async def handle_input(query: str):
+    thread_id = uuid4().hex
+    llm = ChatOpenAI(
+        temperature=0,
+        model="google/gemini-2.5-flash",
+        max_tokens=2048,
+        request_timeout=30,
+        max_retries=3,
+        api_key=os.getenv("OPENROUTER_API_KEY"),
+        base_url="https://openrouter.ai/api/v1"
+    )
+    
+    agent = create_react_agent(
+        tools=orchestrator_tools,
+        prompt=systemPrompt,
+        model=llm,
+        checkpointer=memory,
+    )
+
+    try:
+        res = await agent.ainvoke({"messages": [("user", query)]},config={"configurable": {"thread_id": thread_id}})   
+        if res is not None:
+            ai_msg = res["messages"][-1].content
+        if ai_msg is not None:
+            if not isinstance(ai_msg, str):
+                ai_msg = str(ai_msg).strip('"')
+        return {"response": ai_msg}
+    except Exception as e:
+        return {"error": str(e)}
 
 @router.post("/input-handler")
-def handle_ui_inputs():
-    pass
+async def handle_ui_inputs(input: UIInput):
+   return await handle_input(input.query)
 
 
 @router.post("/upload")
-def upload_pdfs(file : UploadFile = File(...)):
+async def upload_pdfs(file : UploadFile = File(...)):
     file_path = os.path.join(pdf_directory, file.filename)
 
     with open(file_path, "wb") as buffer:
@@ -37,6 +72,6 @@ def upload_pdfs(file : UploadFile = File(...)):
     }
 
 @router.get("/extract")
-def extract_text_from_pdf():
-   return extract_text()
+async def extract_text_from_pdf():
+   return await extract_text()
 
