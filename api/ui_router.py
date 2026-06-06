@@ -2,12 +2,11 @@ from  fastapi import APIRouter
 from fastapi import FastAPI, UploadFile, File
 import os
 from dotenv import load_dotenv
-from langchain import tools
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import InMemorySaver
 import shutil
+from config.wrapperConfig import LLMFactory
 from utils.sysPrompt import systemPrompt
-from langchain_openai import ChatOpenAI
 from uuid_utils import uuid4
 from utils.pdfExtractor import extract_text
 from models.InputHandler import UIInput
@@ -26,16 +25,8 @@ router = APIRouter()
 
 async def handle_input(query: str):
     thread_id = uuid4().hex
-    llm = ChatOpenAI(
-        temperature=0,
-        model="google/gemini-2.5-flash",
-        max_tokens=2048,
-        request_timeout=30,
-        max_retries=3,
-        api_key=os.getenv("OPENROUTER_API_KEY"),
-        base_url="https://openrouter.ai/api/v1"
-    )
-    
+   
+    llm = LLMFactory.get_llm()
     agent = create_react_agent(
         tools=orchestrator_tools,
         prompt=systemPrompt,

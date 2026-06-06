@@ -1,7 +1,6 @@
 from pypdf import PdfReader
 import os
 from typing import List
-
 from utils.embeddings import embeddings, vector_store
 
 
