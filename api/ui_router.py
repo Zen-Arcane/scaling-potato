@@ -62,7 +62,5 @@ async def upload_pdfs(file : UploadFile = File(...)):
         "path": file_path
     }
 
-@router.get("/extract")
-async def extract_text_from_pdf():
-   return await extract_text()
+
 
