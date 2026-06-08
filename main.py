@@ -6,11 +6,11 @@ from core.pdf_scheduler import pdf_scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage application lifecycle - start and stop scheduler."""
-    # Startup
+    pdf_scheduler.trigger_now()  # scan immediately
     pdf_scheduler.start()
+
     yield
-    # Shutdown
+
     pdf_scheduler.stop()
 
 
