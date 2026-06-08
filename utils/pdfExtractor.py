@@ -1,7 +1,11 @@
 from pypdf import PdfReader
-import os
 from typing import List
-from utils.embeddings import embeddings, vector_store
+import os
+
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from utils.embeddings import vector_store
 
 
 def extract_text(pdf_path: str = "data-source/Bank-Policy.pdf") -> str:
@@ -11,74 +15,68 @@ def extract_text(pdf_path: str = "data-source/Bank-Policy.pdf") -> str:
 
     for page in reader.pages:
         page_text = page.extract_text()
+
         if page_text:
             text += page_text + "\n"
 
     return text
 
 
-def chunk_text(text: str, max_chars: int = 1000, overlap: int = 200) -> List[str]:
-    chunks: List[str] = []
-    start = 0
-    length = len(text)
-    if length == 0:
-        return chunks
+def chunk_text(
+    text: str,
+    chunk_size: int = 1000,
+    chunk_overlap: int = 200
+) -> List[str]:
 
-    while start < length:
-        end = start + max_chars
-        chunk = text[start:end]
-        chunks.append(chunk)
-        start = end - overlap
-    return chunks
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap
+    )
+
+    return splitter.split_text(text)
 
 
-def store_pdf_embeddings(pdf_path: str = None, collection_name: str = "pdf_docs") -> int:
-    """Extract text from `pdf_path`, split into chunks, embed and persist to the configured vector store.
+def store_pdf_embeddings(
+    pdf_path: str = "data-source/Bank-Policy.pdf"
+) -> int:
 
-    Returns the number of chunks indexed.
-    """
-    pdf_path = pdf_path or "data-source/Bank-Policy.pdf"
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
     text = extract_text(pdf_path)
-    chunks = chunk_text(text)
 
-    if not chunks:
+    if not text.strip():
         return 0
 
-    metadatas = [{"source": os.path.basename(pdf_path), "chunk": i} for i in range(len(chunks))]
+    chunks = chunk_text(text)
 
-  
-    try:
-        vector_store.add_texts(chunks, metadatas=metadatas)
-    except Exception:
-        try:
-            # Some wrappers expect Document objects or add_documents
-            docs = []
-            for i, chunk in enumerate(chunks):
-                docs.append({"page_content": chunk, "metadata": metadatas[i]})
-            vector_store.add_documents(docs)
-        except Exception as e:
-            embs = embeddings.embed_documents(chunks)
+    documents = [
+        Document(
+            page_content=chunk,
+            metadata={
+                "source": os.path.basename(pdf_path),
+                "chunk": index
+            }
+        )
+        for index, chunk in enumerate(chunks)
+    ]
 
-            if hasattr(vector_store, "persist"):
-                try:
-                    vector_store.persist()
-                except Exception:
-                    pass
-            raise e
+    # Optional: clear existing collection before re-indexing
+    # Uncomment if you don't want duplicate embeddings
+    #
+    # vector_store.delete_collection()
+    # from utils.embeddings import embeddings
+    # vector_store = Chroma(
+    #     collection_name="pdf_docs",
+    #     embedding_function=embeddings,
+    #     persist_directory="./chroma_db"
+    # )
 
- 
-    try:
-        if hasattr(vector_store, "persist"):
-            vector_store.persist()
-    except Exception:
-        pass
+    vector_store.add_documents(documents)
 
-    return len(chunks)
+    return len(documents)
 
 
 if __name__ == "__main__":
     count = store_pdf_embeddings()
-    print(f"Indexed {count} chunks from PDF into vector store")
+    print(f"Indexed {count} chunks into Chroma")

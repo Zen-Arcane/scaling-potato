@@ -12,3 +12,5 @@ sentence-transformers
 chromadb
 langchain-chroma
 pydantic
+apscheduler
+langchain_text_splitters

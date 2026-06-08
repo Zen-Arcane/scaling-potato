@@ -1,6 +1,7 @@
 from  fastapi import APIRouter
 from fastapi import FastAPI, UploadFile, File
 import os
+import logging
 from dotenv import load_dotenv
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import InMemorySaver
@@ -12,6 +13,7 @@ from utils.pdfExtractor import extract_text
 from models.InputHandler import UIInput
 from core.orchestrator import tools as orchestrator_tools
 
+logger = logging.getLogger(__name__)
 load_dotenv()
 memory = InMemorySaver()
 
@@ -23,19 +25,28 @@ os.makedirs(pdf_directory, exist_ok=True)
 
 router = APIRouter()
 
+# Create agent once at module level - reused across all requests
+logger.info("Initializing agent at module startup...")
+llm = LLMFactory.get_llm()
+agent = create_react_agent(
+    tools=orchestrator_tools,
+    prompt=systemPrompt,
+    model=llm,
+    checkpointer=memory,
+)
+logger.info("Agent initialized")
+
 async def handle_input(query: str):
     thread_id = uuid4().hex
-   
-    llm = LLMFactory.get_llm()
-    agent = create_react_agent(
-        tools=orchestrator_tools,
-        prompt=systemPrompt,
-        model=llm,
-        checkpointer=memory,
-    )
 
     try:
-        res = await agent.ainvoke({"messages": [("user", query)]},config={"configurable": {"thread_id": thread_id}})   
+        # Invoke agent with thread-specific memory checkpoint
+        # The same agent instance handles multiple concurrent conversations
+        # via separate thread_ids
+        res = await agent.ainvoke(
+            {"messages": [("user", query)]},
+            config={"configurable": {"thread_id": thread_id}}
+        )
         if res is not None:
             ai_msg = res["messages"][-1].content
         if ai_msg is not None:
@@ -43,6 +54,7 @@ async def handle_input(query: str):
                 ai_msg = str(ai_msg).strip('"')
         return {"response": ai_msg}
     except Exception as e:
+        logger.error(f"Error in handle_input: {str(e)}")
         return {"error": str(e)}
 
 @router.post("/input-handler")
