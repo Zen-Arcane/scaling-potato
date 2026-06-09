@@ -8,18 +8,18 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from utils.embeddings import vector_store
 
 
-def extract_text(pdf_path: str = "data-source/Bank-Policy.pdf") -> str:
-    reader = PdfReader(pdf_path)
+# def extract_text(pdf_path: str = "data-source/Bank-Policy.pdf") -> str:
+#     reader = PdfReader(pdf_path)
 
-    text = ""
+#     text = ""
 
-    for page in reader.pages:
-        page_text = page.extract_text()
+#     for page in reader.pages:
+#         page_text = page.extract_text()
 
-        if page_text:
-            text += page_text + "\n"
+#         if page_text:
+#             text += page_text + "\n"
 
-    return text
+#     return text
 
 
 def chunk_text(
@@ -43,34 +43,35 @@ def store_pdf_embeddings(
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"PDF not found: {pdf_path}")
 
-    text = extract_text(pdf_path)
+    reader = PdfReader(pdf_path)
 
-    if not text.strip():
-        return 0
+    page_documents = []
 
-    chunks = chunk_text(text)
+    for page_num, page in enumerate(reader.pages, start=1):
+        page_text = page.extract_text()
 
-    documents = [
-        Document(
-            page_content=chunk,
-            metadata={
-                "source": os.path.basename(pdf_path),
-                "chunk": index
-            }
+        if not page_text:
+            continue
+
+        page_documents.append(
+            Document(
+                page_content=page_text,
+                metadata={
+                    "source": os.path.basename(pdf_path),
+                    "page": page_num
+                }
+            )
         )
-        for index, chunk in enumerate(chunks)
-    ]
 
-    # Optional: clear existing collection before re-indexing
-    # Uncomment if you don't want duplicate embeddings
-    #
-    # vector_store.delete_collection()
-    # from utils.embeddings import embeddings
-    # vector_store = Chroma(
-    #     collection_name="pdf_docs",
-    #     embedding_function=embeddings,
-    #     persist_directory="./chroma_db"
-    # )
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1500,
+        chunk_overlap=300
+    )
+
+    documents = splitter.split_documents(page_documents)
+
+    for idx, doc in enumerate(documents):
+        doc.metadata["chunk"] = idx
 
     vector_store.add_documents(documents)
 

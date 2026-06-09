@@ -9,9 +9,10 @@ import shutil
 from config.wrapperConfig import LLMFactory
 from utils.sysPrompt import systemPrompt
 from uuid_utils import uuid4
-from utils.pdfExtractor import extract_text
 from models.InputHandler import UIInput
 from core.orchestrator import tools as orchestrator_tools
+import json
+import re
 
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -36,26 +37,66 @@ agent = create_react_agent(
 )
 logger.info("Agent initialized")
 
+# async def handle_input(query: str):
+#     thread_id = uuid4().hex
+
+#     try:
+#         # Invoke agent with thread-specific memory checkpoint
+#         # The same agent instance handles multiple concurrent conversations
+#         # via separate thread_ids
+#         res = await agent.ainvoke(
+#             {"messages": [("user", query)]},
+#             config={"configurable": {"thread_id": thread_id}}
+#         )
+#         if res is not None:
+#             ai_msg = res["messages"][-1].content
+#         if ai_msg is not None:
+#             if not isinstance(ai_msg, str):
+#                 ai_msg = str(ai_msg).strip('"')
+#         return {"response": ai_msg}
+#     except Exception as e:
+#         logger.error(f"Error in handle_input: {str(e)}")
+#         return {"error": str(e)}
+
+
+
+def parse_agent_response(ai_msg):
+    if not isinstance(ai_msg, str):
+        return ai_msg
+
+    ai_msg = ai_msg.strip()
+
+    # Extract JSON block if present
+    match = re.search(r"```(?:json)?\s*(.*?)\s*```", ai_msg, re.DOTALL)
+
+    if match:
+        ai_msg = match.group(1)
+
+    try:
+        return json.loads(ai_msg)
+    except Exception:
+        return {
+            "response": ai_msg,
+            "references": []
+        }
+
 async def handle_input(query: str):
     thread_id = uuid4().hex
 
     try:
-        # Invoke agent with thread-specific memory checkpoint
-        # The same agent instance handles multiple concurrent conversations
-        # via separate thread_ids
         res = await agent.ainvoke(
             {"messages": [("user", query)]},
             config={"configurable": {"thread_id": thread_id}}
         )
-        if res is not None:
-            ai_msg = res["messages"][-1].content
-        if ai_msg is not None:
-            if not isinstance(ai_msg, str):
-                ai_msg = str(ai_msg).strip('"')
-        return {"response": ai_msg}
+
+        return parse_agent_response(
+                res["messages"][-1].content
+            )
+
     except Exception as e:
         logger.error(f"Error in handle_input: {str(e)}")
         return {"error": str(e)}
+    
 
 @router.post("/input-handler")
 async def handle_ui_inputs(input: UIInput):
